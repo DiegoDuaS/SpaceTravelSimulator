@@ -40,4 +40,4 @@ cargo build --release
 
 ## Preview del Proyecto
 
-Puedes ver un video del proyecto [aquí]().
+Puedes ver un video del proyecto [aquí](https://youtu.be/aXQaL_PY0oM).
