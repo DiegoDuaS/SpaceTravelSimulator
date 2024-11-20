@@ -12,6 +12,7 @@ mod fragment;
 mod shaders;
 mod camera;
 mod cuerpo;
+mod spaceship;
 
 use framebuffer::Framebuffer;
 use vertex::Vertex;
@@ -21,6 +22,7 @@ use triangle::triangle;
 use shaders::{vertex_shader, fragment_shader};
 use fastnoise_lite::{FastNoiseLite, NoiseType, FractalType};
 use cuerpo::Cuerpo;
+use spaceship::Spaceship;
 
 
 
@@ -314,10 +316,11 @@ fn main() {
     let framebuffer_width = 800;
     let framebuffer_height = 600;
     let disappearance_buffer = 5.0;  
+    let stars = generate_stars(500, framebuffer_width, framebuffer_height);
     
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Laboratorio_Bodies",
+        "Proyecto-SistemaSolar",
         window_width,
         window_height,
         WindowOptions::default(),
@@ -336,6 +339,10 @@ fn main() {
         Vec3::new(0.0, 1.0, 0.0)
     );
 
+    let mut translation_nave = Vec3::new(1.5, 1.5, 19.0);
+    let mut rotation_nave = Vec3::new(0.0, 1.0, 0.0);
+    let scale = 0.03f32;
+
     let solar_system = create_solar_system();
     let mut time = 0;
     let projection_matrix = create_perspective_matrix(window_width as f32, window_height as f32);
@@ -351,9 +358,10 @@ fn main() {
 
         time += 1;
 
-        handle_input(&window, &mut camera);
+        handle_input(&window, &mut camera, &mut translation_nave, &mut rotation_nave);
 
         framebuffer.clear();
+        framebuffer.draw_stars(&stars); 
 
         for (index, body) in solar_system.iter().enumerate() {
             let noise = create_noise(index);
@@ -386,8 +394,6 @@ fn main() {
             uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
             uniforms.time = time;
         
-            framebuffer.set_current_color(0xFFFFFF);
-        
             let camera_to_planet_distance = (camera.eye - &translation).magnitude();
             if camera_to_planet_distance <= body.scale + disappearance_buffer {
                 continue; 
@@ -397,8 +403,26 @@ fn main() {
                 render(&mut framebuffer, &uniforms, &body.vertex_array, index);
             }
         }
-        
 
+        let noise = create_noise(6);
+
+        let mut uniforms = Uniforms { 
+            model_matrix: Mat4::identity(), 
+            view_matrix: Mat4::identity(), 
+            projection_matrix, 
+            viewport_matrix, 
+            time, 
+            noise 
+        };
+
+        uniforms.model_matrix = create_model_matrix(translation_nave, scale, rotation_nave);
+        uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
+
+        let obj = Obj::load("assets/models/nave.obj").expect("Failed to load obj");
+        let vertex_arrays = obj.get_vertex_array(); 
+
+        render(&mut framebuffer, &uniforms,&vertex_arrays, 7);
+        
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
@@ -406,12 +430,19 @@ fn main() {
 }
 
 
-fn handle_input(window: &Window, camera: &mut Camera) {
+fn handle_input(window: &Window, camera: &mut Camera, translation_nave: &mut Vec3, rotation_nave: &mut Vec3) {
     let movement_speed = 1.0;
-    let rotation_speed = PI/50.0;
+    let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
+    
+    // Inicializamos original_camera con los valores predeterminados
+    let mut original_camera: Option<(Vec3, Vec3, Vec3)> = Some((
+        Vec3::new(0.0, 0.0, 20.0), // Posición original de la cámara
+        Vec3::new(0.0, 0.0, 0.0),  // Centro de la cámara
+        Vec3::new(0.0, 1.0, 0.0),  // Dirección "arriba" de la cámara
+    ));
 
-    //  camera orbit controls
+    // Cámara: controles de órbita
     if window.is_key_down(Key::Left) {
         camera.orbit(rotation_speed, 0.0);
     }
@@ -425,7 +456,7 @@ fn handle_input(window: &Window, camera: &mut Camera) {
         camera.orbit(0.0, rotation_speed);
     }
 
-    // Camera movement controls
+    // Movimiento de la cámara
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
     if window.is_key_down(Key::A) {
         movement.x -= movement_speed;
@@ -443,14 +474,48 @@ fn handle_input(window: &Window, camera: &mut Camera) {
         camera.move_center(movement);
     }
 
-    // Camera zoom controls
+    // Zoom de la cámara
     if window.is_key_down(Key::Up) {
         camera.zoom(zoom_speed);
     }
     if window.is_key_down(Key::Down) {
         camera.zoom(-zoom_speed);
     }
+
+    // Guardar la posición original de la cámara cuando se presiona 'B'
+    if window.is_key_down(Key::B) {
+        if original_camera.is_none() {
+            // Guardamos la cámara solo si no ha sido guardada antes
+            original_camera = Some((
+                camera.eye.clone(), 
+                camera.center.clone(), 
+                camera.up.clone()
+            ));
+        }
+        let solar_system_center = Vec3::new(0.0, 0.0, 0.0); // Asume que el centro del sistema solar es (0, 0, 0)
+        let bird_eye_height = 10.0; // Altura de la vista superior
+        camera.eye = Vec3::new(solar_system_center.x, bird_eye_height, solar_system_center.z);
+        camera.center = solar_system_center;
+        camera.up = Vec3::new(0.0, 0.0, -1.0); // Eje "arriba" apunta hacia el eje Z negativo
+    }
+
+    // Volver a la posición original (key 'V')
+    if window.is_key_down(Key::V) {
+        if let Some((original_eye, original_center, original_up)) = original_camera {
+            camera.eye = original_eye;
+            camera.center = original_center;
+            camera.up = original_up;
+            original_camera = None; // Restablecer la cámara original después de restaurarla
+        }
+    }
+
+    // Actualizar la posición de la nave basada en la posición de la cámara
+    let camera_direction = (camera.center - camera.eye).normalize();
+    *translation_nave = camera.eye + camera_direction * 1.0; // Mantener la nave a 2 unidades frente a la cámara
+    rotation_nave.y = camera_direction.y.atan2(camera_direction.x);  // La nave rota según el ángulo de la cámara
 }
+
+
 
 fn is_in_camera(position: &Vec3, view_matrix: &Mat4, projection_matrix: &Mat4) -> bool {
     // Convertir la posición a Vec4 (con w = 1.0 para objetos estáticos)
@@ -471,16 +536,19 @@ fn is_in_camera(position: &Vec3, view_matrix: &Mat4, projection_matrix: &Mat4) -
     z_ndc >= 0.0 && z_ndc <= 1.0
 }
 
-fn generate_orbit_points(radius: f32, segments: usize) -> Vec<Vec3> {
-    let mut points = Vec::with_capacity(segments);
-
-    for i in 0..segments {
-        let angle = (i as f32) * (2.0 * std::f32::consts::PI / segments as f32);
-        let x = radius * angle.cos();
-        let z = radius * angle.sin();
-        points.push(Vec3::new(x, 0.0, z)); // Mantén Y en 0 para el plano XZ
-    }
-
-    points
+fn generate_stars(num_stars: usize, width: usize, height: usize) -> Vec<(usize, usize)> {
+    let mut rng = rand::thread_rng();
+    (0..num_stars)
+        .map(|_| {
+            (
+                rng.gen_range(0..width),  // Posición X de la estrella
+                rng.gen_range(0..height) // Posición Y de la estrella
+            )
+        })
+        .collect()
 }
+
+
+
+
 

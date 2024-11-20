@@ -54,6 +54,7 @@ pub fn fragment_shader(fragment: &Fragment, uniforms: &Uniforms, index: usize) -
       4 => water_shader(fragment, uniforms), 
       5 => gas_giant_shader(fragment, uniforms), 
       6 => rock_shader(fragment, uniforms),
+      7 => gray_shader(fragment, uniforms),
       _ => rock_shader(fragment, uniforms), 
   }
 }
@@ -327,6 +328,35 @@ pub fn lava_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 
   final_color
 }
+
+pub fn gray_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
+  // Colores base para simular la textura gris de la nave
+  let dark_gray = Color::new(50, 50, 50);   // Gris oscuro para áreas sombreadas
+  let light_gray = Color::new(200, 200, 200); // Gris claro para áreas iluminadas
+  let black_color = Color::new(0, 0, 0);    // Negro para mayor profundidad y contraste
+
+  // Coordenadas del fragmento
+  let x = fragment.vertex_position.x;
+  let y = fragment.vertex_position.y;
+
+  // Generación de ruido para simular una textura sutil en la superficie de la nave
+  // Usamos escalas de ruido para crear variabilidad suave
+  let base_noise = uniforms.noise.get_noise_3d(x * 2.0, y * 2.0, 0.0) * 0.5 + 0.5; // Ruido base
+  let noise_variation = uniforms.noise.get_noise_3d(x * 10.0, y * 10.0, 0.0) * 0.5 + 0.5; // Ruido adicional para variabilidad
+
+  // Ajustamos la intensidad del ruido base para suavizar las transiciones de luz y sombra
+  let adjusted_noise = base_noise * 0.8 + noise_variation * 0.2; // Mezcla de ruidos
+
+  // Interpolación de colores en función del valor del ruido
+  let base_gray_color = dark_gray.lerp(&light_gray, adjusted_noise);
+
+  // Usamos el ruido para darle más profundidad, haciendo las áreas más oscuras más pronunciadas
+  let final_color = base_gray_color.lerp(&black_color, adjusted_noise * 0.3);
+
+  // Ajusta el color final con la intensidad del fragmento para simular sombras
+  final_color * fragment.intensity
+}
+
 
 
 

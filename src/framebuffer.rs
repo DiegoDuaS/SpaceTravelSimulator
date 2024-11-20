@@ -46,5 +46,14 @@ impl Framebuffer {
         self.current_color = color;
     }
 
+    pub fn draw_stars(&mut self, stars: &[(usize, usize)]) {
+        for &(x, y) in stars {
+            if x < self.width && y < self.height {
+                let index = y * self.width + x;
+                self.buffer[index] = 0xFFFFFF; // Color blanco para las estrellas
+            }
+        }
+    }
+
     
 }
